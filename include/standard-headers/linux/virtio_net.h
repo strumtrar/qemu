@@ -56,10 +56,17 @@
 #define VIRTIO_NET_F_MQ	22	/* Device supports Receive Flow
 					 * Steering */
 #define VIRTIO_NET_F_CTRL_MAC_ADDR 23	/* Set MAC address */
+
+#define VIRTIO_NET_F_TX_TIME	  49	/* Driver sets TAI delivery time */
+#define VIRTIO_NET_F_TX_TSTAMP	  50	/* Device sends TAI transmit time */
+#define VIRTIO_NET_F_RX_TSTAMP	  51	/* Device sends TAI receive time */
+#define VIRTIO_NET_F_TX_HASH	  52	/* Driver sends hash report */
+
 #define VIRTIO_NET_F_NOTF_COAL	53	/* Device supports notifications coalescing */
 #define VIRTIO_NET_F_GUEST_USO4	54	/* Guest can handle USOv4 in. */
 #define VIRTIO_NET_F_GUEST_USO6	55	/* Guest can handle USOv6 in. */
 #define VIRTIO_NET_F_HOST_USO	56	/* Host can handle USO in. */
+
 #define VIRTIO_NET_F_HASH_REPORT  57	/* Supports hash report */
 #define VIRTIO_NET_F_GUEST_HDRLEN  59	/* Guest provides the exact hdr_len value. */
 #define VIRTIO_NET_F_RSS	  60	/* Supports RSS RX steering */
@@ -129,6 +136,8 @@ struct virtio_net_hdr_v1 {
 #define VIRTIO_NET_HDR_F_NEEDS_CSUM	1	/* Use csum_start, csum_offset */
 #define VIRTIO_NET_HDR_F_DATA_VALID	2	/* Csum is valid */
 #define VIRTIO_NET_HDR_F_RSC_INFO	4	/* rsc info in csum_ fields */
+#define VIRTIO_NET_HDR_F_TX_TIME	4	/* tx: delivery time */
+#define VIRTIO_NET_HDR_F_TSTAMP		8	/* timestamp is recorded */
 	uint8_t flags;
 #define VIRTIO_NET_HDR_GSO_NONE		0	/* Not a GSO frame */
 #define VIRTIO_NET_HDR_GSO_TCPV4	1	/* GSO frame, IPv4 TCP (TSO) */
@@ -175,8 +184,25 @@ struct virtio_net_hdr_v1_hash {
 #define VIRTIO_NET_HASH_REPORT_IPv6_EX         7
 #define VIRTIO_NET_HASH_REPORT_TCPv6_EX        8
 #define VIRTIO_NET_HASH_REPORT_UDPv6_EX        9
+#define VIRTIO_NET_HASH_REPORT_L4              10
+#define VIRTIO_NET_HASH_REPORT_OTHER           11
 	uint16_t hash_report;
-	uint16_t padding;
+	union {
+		uint16_t padding;
+#define VIRTIO_NET_HASH_STATE_DEFAULT          0
+		uint16_t hash_state;
+	};
+};
+
+struct virtio_net_hdr_hash_ts {
+	struct virtio_net_hdr_v1 hdr;
+	struct {
+		uint32_t value;
+		uint16_t report;
+		uint16_t flow_state;
+	} hash;
+	uint32_t reserved;
+	uint64_t tstamp;
 };
 
 #ifndef VIRTIO_NET_NO_LEGACY

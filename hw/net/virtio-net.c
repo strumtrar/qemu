@@ -660,14 +660,15 @@ static int peer_has_ufo(VirtIONet *n)
 }
 
 static void virtio_net_set_mrg_rx_bufs(VirtIONet *n, int mergeable_rx_bufs,
-                                       int version_1, int hash_report)
+                                       int version_1, int hash_report,
+                                       int tstamp)
 {
     int i;
     NetClientState *nc;
 
     n->mergeable_rx_bufs = mergeable_rx_bufs;
 
-    if (version_1) {
+    if (version_1 || hash_report) {
         n->guest_hdr_len = hash_report ?
             sizeof(struct virtio_net_hdr_v1_hash) :
             sizeof(struct virtio_net_hdr_mrg_rxbuf);
@@ -677,6 +678,9 @@ static void virtio_net_set_mrg_rx_bufs(VirtIONet *n, int mergeable_rx_bufs,
             sizeof(struct virtio_net_hdr_mrg_rxbuf) :
             sizeof(struct virtio_net_hdr);
     }
+
+    if (tstamp)
+        n->guest_hdr_len = sizeof(struct virtio_net_hdr_hash_ts);
 
     for (i = 0; i < n->max_queue_pairs; i++) {
         nc = qemu_get_subqueue(n->nic, i);
@@ -797,6 +801,10 @@ static uint64_t virtio_net_get_features(VirtIODevice *vdev, uint64_t features,
         virtio_clear_feature(&features, VIRTIO_NET_F_GUEST_ECN);
 
         virtio_clear_feature(&features, VIRTIO_NET_F_HASH_REPORT);
+        virtio_clear_feature(&features, VIRTIO_NET_F_TX_HASH);
+        virtio_clear_feature(&features, VIRTIO_NET_F_RX_TSTAMP);
+        virtio_clear_feature(&features, VIRTIO_NET_F_TX_TSTAMP);
+        virtio_clear_feature(&features, VIRTIO_NET_F_TX_TIME);
     }
 
     if (!peer_has_vnet_hdr(n) || !peer_has_ufo(n)) {
@@ -977,7 +985,16 @@ static void virtio_net_set_features(VirtIODevice *vdev, uint64_t features)
                                virtio_has_feature(features,
                                                   VIRTIO_F_VERSION_1),
                                virtio_has_feature(features,
-                                                  VIRTIO_NET_F_HASH_REPORT));
+                                                  VIRTIO_NET_F_HASH_REPORT) ||
+                               virtio_has_feature(features,
+                                                  VIRTIO_NET_F_TX_HASH),
+                               virtio_has_feature(features,
+                                                  VIRTIO_NET_F_RX_TSTAMP) ||
+                               virtio_has_feature(features,
+                                                  VIRTIO_NET_F_TX_TSTAMP) ||
+                               virtio_has_feature(features,
+                                                  VIRTIO_NET_F_TX_TIME)
+			       );
 
     n->rsc4_enabled = virtio_has_feature(features, VIRTIO_NET_F_RSC_EXT) &&
         virtio_has_feature(features, VIRTIO_NET_F_GUEST_TSO4);
@@ -3003,7 +3020,8 @@ static int virtio_net_post_load_device(void *opaque, int version_id)
                                virtio_vdev_has_feature(vdev,
                                                        VIRTIO_F_VERSION_1),
                                virtio_vdev_has_feature(vdev,
-                                                       VIRTIO_NET_F_HASH_REPORT));
+                                                       VIRTIO_NET_F_HASH_REPORT),
+                               0);
 
     /* MAC_TABLE_ENTRIES may be different from the saved image */
     if (n->mac_table.in_use > MAC_TABLE_ENTRIES) {
@@ -3719,7 +3737,7 @@ static void virtio_net_device_realize(DeviceState *dev, Error **errp)
 
     n->vqs[0].tx_waiting = 0;
     n->tx_burst = n->net_conf.txburst;
-    virtio_net_set_mrg_rx_bufs(n, 0, 0, 0);
+    virtio_net_set_mrg_rx_bufs(n, 0, 0, 0, 0);
     n->promisc = 1; /* for compatibility */
 
     n->mac_table.macs = g_malloc0(MAC_TABLE_ENTRIES * ETH_ALEN);
@@ -3903,6 +3921,14 @@ static Property virtio_net_properties[] = {
                     VIRTIO_NET_F_RSS, false),
     DEFINE_PROP_BIT64("hash", VirtIONet, host_features,
                     VIRTIO_NET_F_HASH_REPORT, false),
+    DEFINE_PROP_BIT64("tx_hash", VirtIONet, host_features,
+                    VIRTIO_NET_F_TX_HASH, true),
+    DEFINE_PROP_BIT64("rx_tstamp", VirtIONet, host_features,
+                    VIRTIO_NET_F_RX_TSTAMP, true),
+    DEFINE_PROP_BIT64("tx_tstamp", VirtIONet, host_features,
+                    VIRTIO_NET_F_TX_TSTAMP, true),
+    DEFINE_PROP_BIT64("tx_time", VirtIONet, host_features,
+                    VIRTIO_NET_F_TX_TIME, true),
     DEFINE_PROP_BIT64("guest_rsc_ext", VirtIONet, host_features,
                     VIRTIO_NET_F_RSC_EXT, false),
     DEFINE_PROP_UINT32("rsc_interval", VirtIONet, rsc_timeout,
