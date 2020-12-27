@@ -56,6 +56,7 @@
 #define VIRTIO_NET_F_MQ	22	/* Device supports Receive Flow
 					 * Steering */
 #define VIRTIO_NET_F_CTRL_MAC_ADDR 23	/* Set MAC address */
+#define VIRTIO_NET_F_TSTAMP	  49	/* Device sends TAI receive time */
 #define VIRTIO_NET_F_DEVICE_STATS 50	/* Device can provide device-level statistics. */
 #define VIRTIO_NET_F_VQ_NOTF_COAL 52	/* Device supports virtqueue notification coalescing */
 #define VIRTIO_NET_F_NOTF_COAL	53	/* Device supports notifications coalescing */
@@ -204,14 +205,22 @@ struct virtio_net_hdr_v1_hash {
 #define VIRTIO_NET_HASH_REPORT_IPv6_EX         7
 #define VIRTIO_NET_HASH_REPORT_TCPv6_EX        8
 #define VIRTIO_NET_HASH_REPORT_UDPv6_EX        9
-	uint16_t hash_report;
-	uint16_t padding;
+	__virtio16 hash_report;
+	__virtio16 padding;
 };
 
 struct virtio_net_hdr_v1_hash_tunnel {
 	struct virtio_net_hdr_v1_hash hash_hdr;
 	uint16_t outer_th_offset;
 	uint16_t inner_nh_offset;
+};
+
+struct virtio_net_hdr_v1_hash_tunnel_ts {
+	struct virtio_net_hdr_v1_hash_tunnel tnl;
+	__le16 tstamp_0;
+	__le16 tstamp_1;
+	__le16 tstamp_2;
+	__le16 tstamp_3;
 };
 
 #ifndef VIRTIO_NET_NO_LEGACY

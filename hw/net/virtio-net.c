@@ -666,7 +666,7 @@ static bool peer_has_tunnel(VirtIONet *n)
 
 static void virtio_net_set_mrg_rx_bufs(VirtIONet *n, int mergeable_rx_bufs,
                                        int version_1, int hash_report,
-                                       int tunnel)
+                                       int tunnel, int tstamp)
 {
     int i;
     NetClientState *nc;
@@ -674,11 +674,13 @@ static void virtio_net_set_mrg_rx_bufs(VirtIONet *n, int mergeable_rx_bufs,
     n->mergeable_rx_bufs = mergeable_rx_bufs;
 
     if (version_1) {
-        n->guest_hdr_len = tunnel ?
-            sizeof(struct virtio_net_hdr_v1_hash_tunnel) :
-            (hash_report ?
-             sizeof(struct virtio_net_hdr_v1_hash) :
-             sizeof(struct virtio_net_hdr_mrg_rxbuf));
+        n->guest_hdr_len = tstamp ?
+	    sizeof(struct virtio_net_hdr_v1_hash_tunnel_ts) :
+	    (tunnel ?
+             sizeof(struct virtio_net_hdr_v1_hash_tunnel) :
+             (hash_report ?
+              sizeof(struct virtio_net_hdr_v1_hash) :
+              sizeof(struct virtio_net_hdr_mrg_rxbuf)));
         n->rss_data.populate_hash = !!hash_report;
     } else {
         n->guest_hdr_len = n->mergeable_rx_bufs ?
@@ -953,7 +955,9 @@ static void virtio_net_set_features(VirtIODevice *vdev,
                                                   VIRTIO_F_VERSION_1),
                                virtio_has_feature_ex(features,
                                                   VIRTIO_NET_F_HASH_REPORT),
-                               virtio_has_tunnel_hdr(features));
+                               virtio_has_tunnel_hdr(features),
+                               virtio_has_feature_ex(features,
+                                                  VIRTIO_NET_F_TSTAMP));
 
     n->rsc4_enabled = virtio_has_feature_ex(features, VIRTIO_NET_F_RSC_EXT) &&
         virtio_has_feature_ex(features, VIRTIO_NET_F_GUEST_TSO4);
@@ -1725,7 +1729,7 @@ static void receive_header(VirtIONet *n, const struct iovec *iov, int iov_cnt,
         if (n->needs_vnet_hdr_swap) {
             virtio_net_hdr_swap(VIRTIO_DEVICE(n), wbuf);
         }
-        iov_from_buf(iov, iov_cnt, 0, buf, sizeof(struct virtio_net_hdr));
+	iov_from_buf(iov, iov_cnt, 0, buf, n->guest_hdr_len);
     } else {
         struct virtio_net_hdr hdr = {
             .flags = 0,
@@ -3191,7 +3195,7 @@ static int virtio_net_post_load_device(void *opaque, int version_id)
                                                        VIRTIO_F_VERSION_1),
                                virtio_vdev_has_feature(vdev,
                                                       VIRTIO_NET_F_HASH_REPORT),
-                               has_tunnel_hdr);
+                               has_tunnel_hdr, 0);
 
     /* MAC_TABLE_ENTRIES may be different from the saved image */
     if (n->mac_table.in_use > MAC_TABLE_ENTRIES) {
@@ -4011,7 +4015,7 @@ static void virtio_net_device_realize(DeviceState *dev, Error **errp)
 
     n->vqs[0].tx_waiting = 0;
     n->tx_burst = n->net_conf.txburst;
-    virtio_net_set_mrg_rx_bufs(n, 0, 0, 0, 0);
+    virtio_net_set_mrg_rx_bufs(n, 0, 0, 0, 0, 0);
     n->promisc = 1; /* for compatibility */
 
     n->mac_table.macs = g_malloc0(MAC_TABLE_ENTRIES * ETH_ALEN);
@@ -4234,6 +4238,8 @@ static const Property virtio_net_properties[] = {
                     VIRTIO_NET_F_HASH_REPORT, false),
     DEFINE_PROP_ARRAY("ebpf-rss-fds", VirtIONet, nr_ebpf_rss_fds,
                       ebpf_rss_fds, qdev_prop_string, char*),
+    DEFINE_PROP_BIT64("tstamp", VirtIONet, host_features,
+                    VIRTIO_NET_F_TSTAMP, true),
     DEFINE_PROP_BIT64("guest_rsc_ext", VirtIONet, host_features,
                     VIRTIO_NET_F_RSC_EXT, false),
     DEFINE_PROP_UINT32("rsc_interval", VirtIONet, rsc_timeout,
