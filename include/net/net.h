@@ -5,6 +5,7 @@
 #include "qapi/qapi-types-net.h"
 #include "net/queue.h"
 #include "hw/core/qdev-properties-system.h"
+#include "standard-headers/linux/virtio_net.h"
 
 #define MAC_FMT "%02X:%02X:%02X:%02X:%02X:%02X"
 #define MAC_ARG(x) ((uint8_t *)(x))[0], ((uint8_t *)(x))[1], \
@@ -17,6 +18,48 @@
  * the ethernet and virtio_net headers
  */
 #define NET_BUFSIZE (4096 + 65536)
+
+/*
+ * All virtio-net header layouts in one buffer. The wire layout is fixed
+ * and cumulative: a field sits at the same offset whether or not the
+ * features before it were negotiated; unused bytes are padding. tstamp is
+ * thus always at offset 32 and only present (header size 40) if
+ * VIRTIO_NET_F_RX_TSTAMP was negotiated. The negotiated header size tells
+ * how much of this struct is on the wire. Only ever append new fields at
+ * the end.
+ */
+struct virtio_net_common_hdr {
+    union {
+        struct virtio_net_hdr hdr;
+        struct virtio_net_hdr_mrg_rxbuf mrg_hdr;
+        struct virtio_net_hdr_v1_hash hash_v1_hdr;
+        struct virtio_net_hdr_v1_hash_tunnel tnl_hdr;
+    };
+    uint8_t reserved[8];    /* outer_nh_offset, ipsec_resource_hdr (not implemented) */
+    __virtio16 tstamp[4];   /* 64-bit TAI timestamp in ns, little-endian */
+};
+
+QEMU_BUILD_BUG_ON(offsetof(struct virtio_net_common_hdr, tstamp) != 32);
+QEMU_BUILD_BUG_ON(sizeof(struct virtio_net_common_hdr) != 40);
+
+static inline bool is_valid_virtio_net_hdr_len(int len)
+{
+    static const int valid_sizes[] = {
+        sizeof(struct virtio_net_hdr_mrg_rxbuf),
+        sizeof(struct virtio_net_hdr),
+        sizeof(struct virtio_net_hdr_v1_hash),
+        sizeof(struct virtio_net_hdr_v1_hash_tunnel),
+        sizeof(struct virtio_net_common_hdr),
+    };
+
+    for (int i = 0; i < ARRAY_SIZE(valid_sizes); i++) {
+        if (len == valid_sizes[i]) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 struct MACAddr {
     uint8_t a[6];
