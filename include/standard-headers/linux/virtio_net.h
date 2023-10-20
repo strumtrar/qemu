@@ -198,14 +198,14 @@ struct virtio_net_hdr_v1_hash {
 };
 
 struct virtio_net_hdr_hash_ts {
-	struct virtio_net_hdr_v1 hdr;
 	struct {
+		struct virtio_net_hdr_v1 hdr;
 		uint32_t value;
 		uint16_t report;
 		uint16_t flow_state;
 	} hash;
 	uint32_t reserved;
-	uint64_t tstamp;
+	uint64_t rx_tstamp;
 };
 
 #ifndef VIRTIO_NET_NO_LEGACY
