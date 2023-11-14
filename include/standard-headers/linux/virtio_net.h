@@ -203,6 +203,7 @@ struct virtio_net_hdr_hash_ts {
 	} hash;
 	uint32_t reserved;
 	uint64_t rx_tstamp;
+	uint64_t tx_tstamp;
 };
 
 #ifndef VIRTIO_NET_NO_LEGACY
