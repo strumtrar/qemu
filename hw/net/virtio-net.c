@@ -2689,9 +2689,10 @@ static int32_t virtio_net_flush_tx(VirtIONetQueue *q)
 
     for (;;) {
         ssize_t ret;
-        unsigned int out_num;
+        unsigned int out_num, in_num;
         struct iovec sg[VIRTQUEUE_MAX_SIZE], sg2[VIRTQUEUE_MAX_SIZE + 1], *out_sg;
         struct virtio_net_hdr_mrg_rxbuf mhdr;
+        struct virtio_net_hdr_hash_ts *ht;
 
         elem = virtqueue_pop(q->tx_vq, sizeof(VirtQueueElement));
         if (!elem) {
@@ -2728,7 +2729,29 @@ static int32_t virtio_net_flush_tx(VirtIONetQueue *q)
                 out_num += 1;
                 out_sg = sg2;
             }
+
+            ht = (void *)&mhdr;
+            if (n->guest_hdr_len == sizeof(struct virtio_net_hdr_hash_ts)) {
+                if (ht->hash.hdr.flags & VIRTIO_NET_HDR_F_TSTAMP) {
+                    struct timespec ts;
+                    uint64_t tx_tstamp;
+
+                    in_num = elem->out_num;
+                    if (in_num < 1) {
+                        virtio_error(vdev, "virtio-net no writable descriptor for timestamp");
+                        virtqueue_detach_element(q->tx_vq, elem, 0);
+                        g_free(elem);
+                        return -EINVAL;
+                    }
+
+                    clock_gettime(CLOCK_TAI, &ts);
+                    tx_tstamp = cpu_to_le64(((uint64_t) ts.tv_sec * 1000000000L) + ts.tv_nsec);
+
+                    iov_from_buf(elem->in_sg, elem->in_num, 0, &tx_tstamp, sizeof(uint64_t));
+                }
+            }
         }
+
         /*
          * If host wants to see the guest header as is, we can
          * pass it on unchanged. Otherwise, copy just the parts
